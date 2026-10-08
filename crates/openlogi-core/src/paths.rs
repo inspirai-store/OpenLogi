@@ -94,7 +94,13 @@ impl Profile {
             }
         }
 
-        Self::Production
+        // The Windows macro fork keeps using the profile of the original
+        // portable bundle, including its bindings and durable recovery journal.
+        if cfg!(target_os = "windows") {
+            Self::Dev
+        } else {
+            Self::Production
+        }
     }
 
     /// The value of [`crate::env::PROFILE`] that forces this profile.

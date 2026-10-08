@@ -12,7 +12,10 @@ pub(super) fn detect(executable: &Path) -> InstallationSource {
     // Both shipped architectures use 64-bit MSI components. A machine-wide
     // install or another user's registration cannot own this per-user copy.
     let location = RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey_with_flags(r"Software\OpenLogi", KEY_READ | KEY_WOW64_64KEY)
+        .open_subkey_with_flags(
+            openlogi_core::brand::WINDOWS_INSTALL_REGISTRY_KEY,
+            KEY_READ | KEY_WOW64_64KEY,
+        )
         .ok()
         .filter(|key| key.get_value::<u32, _>("Installed").ok() == Some(1))
         .and_then(|key| key.get_value::<String, _>("InstallLocation").ok());

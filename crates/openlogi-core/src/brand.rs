@@ -13,11 +13,18 @@
 use std::path::Path;
 
 /// The OpenLogi GitHub repository.
-pub const REPO_URL: &str = "https://github.com/AprilNEA/OpenLogi";
+pub const REPO_URL: &str = "https://github.com/inspirai-store/OpenLogi";
 /// The README, used as the in-app "Help" link.
-pub const HELP_URL: &str = "https://github.com/AprilNEA/OpenLogi#readme";
+pub const HELP_URL: &str = "https://github.com/inspirai-store/OpenLogi/blob/feat/g604-bluetooth-macros/docs/G604-BLUETOOTH-MACROS.md";
 /// The "latest release" page.
-pub const RELEASES_URL: &str = "https://github.com/AprilNEA/OpenLogi/releases/latest";
+pub const RELEASES_URL: &str = "https://github.com/inspirai-store/OpenLogi/releases/latest";
+
+/// Per-user Windows installation directory for the macro fork.
+/// Keep the MSI's INSTALLFOLDER name in sync with this constant.
+pub const WINDOWS_INSTALL_DIRECTORY: &str = "OpenLogiMacros";
+
+/// MSI receipt for this distribution, separate from upstream installations.
+pub const WINDOWS_INSTALL_REGISTRY_KEY: &str = r"Software\inspirai-store\OpenLogiMacros";
 
 /// The application identifier: the Wayland xdg-toplevel `app_id` (and X11
 /// `WM_CLASS`) the GUI advertises, the root of the macOS bundle-id family

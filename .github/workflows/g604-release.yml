@@ -1,0 +1,82 @@
+name: G604 Windows release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: g604-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.repository == 'inspirai-store/OpenLogi'
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.98.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Install pinned packaging tools
+        shell: pwsh
+        run: |
+          dotnet tool install wix --tool-path "$env:RUNNER_TEMP\tools" --version 6.0.2
+          if ($LASTEXITCODE -ne 0) { throw 'WiX installation failed.' }
+          & "$env:RUNNER_TEMP\tools\wix.exe" extension add --global WixToolset.UI.wixext/6.0.2
+          if ($LASTEXITCODE -ne 0) { throw 'WiX UI extension installation failed.' }
+          Invoke-WebRequest https://github.com/jedisct1/minisign/releases/download/0.12/minisign-0.12-win64.zip -OutFile "$env:RUNNER_TEMP\minisign.zip"
+          if ((Get-FileHash "$env:RUNNER_TEMP\minisign.zip").Hash.ToLowerInvariant() -ne '37b600344e20c19314b2e82813db2bfdcc408b77b876f7727889dbd46d539479') { throw 'Minisign checksum mismatch.' }
+          Expand-Archive "$env:RUNNER_TEMP\minisign.zip" "$env:RUNNER_TEMP\tools"
+      - name: Build and verify installer
+        shell: pwsh
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.G604_UPDATE_SIGNING_KEY }}
+        run: |
+          if (!$env:UPDATE_SIGNING_KEY) { throw 'Configure G604_UPDATE_SIGNING_KEY before releasing.' }
+          $taskKey = "$env:RUNNER_TEMP\update.key"
+          try {
+            [IO.File]::WriteAllText($taskKey, $env:UPDATE_SIGNING_KEY)
+            & scripts/g604-macros/build.ps1 -Installer -OutputDirectory "$env:RUNNER_TEMP\dist" -SigningKey $taskKey -WixPath "$env:RUNNER_TEMP\tools\wix.exe" -MinisignPath "$env:RUNNER_TEMP\tools\minisign-win64\x86_64\minisign.exe"
+          } finally {
+            Remove-Item -LiteralPath $taskKey -ErrorAction SilentlyContinue
+          }
+      - name: Upload packages for review
+        uses: actions/upload-artifact@v7
+        with:
+          name: g604-windows-installer
+          path: |
+            ${{ runner.temp }}/dist/*.msi
+            ${{ runner.temp }}/dist/*.zip
+            ${{ runner.temp }}/dist/*.minisig
+            ${{ runner.temp }}/dist/latest.json
+            ${{ runner.temp }}/dist/SHA256SUMS
+          if-no-files-found: error
+      - name: Publish new fork release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $taskManifest = Get-Content "$env:RUNNER_TEMP\dist\latest.json" -Raw | ConvertFrom-Json
+          $taskTag = $taskManifest.tag
+          gh release view $taskTag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Existing releases are immutable. Bump the workspace version and release a new tag.' }
+          $taskAssets = Get-ChildItem "$env:RUNNER_TEMP\dist" -File | Where-Object { $_.Extension -in '.msi', '.zip', '.minisig', '.json' -or $_.Name -eq 'SHA256SUMS' } | ForEach-Object FullName
+          $taskNotes = "$env:RUNNER_TEMP\release-notes.md"
+          @"
+          Windows x64 installer for the G604 Bluetooth macro fork.
+
+          - Install the MSI per user without administrator rights.
+          - Settings > Updates checks signed packages on this GitHub repository.
+          - Upgrades stop macros and restore G604 firmware before closing the agent.
+          - Existing portable macro settings and recovery records are retained.
+
+          Update payloads have SHA-256 checksums and minisign signatures. This distribution has no Authenticode certificate. Physical six-button validation is still required on each device.
+
+          Source: $env:GITHUB_SHA
+          "@ | Set-Content $taskNotes -Encoding UTF8
+          gh release create $taskTag @taskAssets --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "OpenLogi G604 Macros $($taskManifest.version)" --notes-file $taskNotes --draft
+          if ($LASTEXITCODE -ne 0) { throw 'Release creation failed or is uncertain; inspect GitHub before retrying.' }
+          gh release edit $taskTag --repo $env:GITHUB_REPOSITORY --draft=false --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication is uncertain; inspect GitHub before retrying.' }

@@ -29,8 +29,21 @@ pub(crate) struct Args {
     #[arg(long, env = "GITHUB_REF_NAME")]
     tag: String,
     /// Public update base URL, for example `https://updates.openlogi.org`.
-    #[arg(long, env = "OPENLOGI_UPDATE_BASE_URL")]
+    #[arg(
+        long,
+        env = "OPENLOGI_UPDATE_BASE_URL",
+        default_value = "https://updates.openlogi.org"
+    )]
     base_url: String,
+    /// GitHub owner/repository. Serve artifacts directly from this release.
+    #[arg(long)]
+    github_repository: Option<String>,
+    /// Explicit semver for a fork tag such as `g604-0.8.12`.
+    #[arg(long)]
+    version: Option<String>,
+    /// Require a Windows MSI instead of the upstream DMG artifact set.
+    #[arg(long)]
+    windows_only: bool,
     /// Also emit the per-arch Windows `.msi`/`.zip` entries. Off by default so
     /// the manifest can never reference objects the release workflow's R2
     /// upload step doesn't ship. The release workflow passes it and ships the
@@ -78,17 +91,56 @@ struct Classified {
 }
 
 pub(crate) fn run(args: &Args) -> Result<()> {
-    let version = args.tag.strip_prefix('v').unwrap_or(&args.tag).to_string();
-    let release_base = format!(
-        "{}/releases/{}",
-        args.base_url.trim_end_matches('/'),
-        args.tag
-    );
-    let assets = collect_assets(&args.dist, &release_base, args.include_windows)?;
+    let version = args
+        .version
+        .clone()
+        .unwrap_or_else(|| args.tag.strip_prefix('v').unwrap_or(&args.tag).to_string());
+    let (release_base, release_url) = if let Some(repository) = &args.github_repository {
+        if repository.split('/').count() != 2
+            || repository.split('/').any(|part| {
+                part.is_empty()
+                    || !part
+                        .bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || b"-_.".contains(&c))
+            })
+        {
+            bail!("GitHub repository must be owner/repository");
+        }
+        (
+            format!(
+                "https://github.com/{repository}/releases/download/{}",
+                args.tag
+            ),
+            format!("https://github.com/{repository}/releases/tag/{}", args.tag),
+        )
+    } else {
+        (
+            format!(
+                "{}/releases/{}",
+                args.base_url.trim_end_matches('/'),
+                args.tag
+            ),
+            format!(
+                "https://github.com/AprilNEA/OpenLogi/releases/tag/{}",
+                args.tag
+            ),
+        )
+    };
+    let mut assets = collect_assets(
+        &args.dist,
+        &release_base,
+        args.include_windows || args.windows_only,
+    )?;
+    if args.windows_only {
+        assets.retain(|asset| asset.os == "windows");
+        if !assets.iter().any(|asset| asset.format == "msi") {
+            bail!("no Windows MSI assets found for manifest");
+        }
+    }
     // The DMGs are the publish gate's guaranteed artifact set; the Windows
     // legs are best-effort per arch (a failed leg publishes without them), so
     // their absence must not sink the whole manifest.
-    if !assets.iter().any(|asset| asset.os == "macos") {
+    if !args.windows_only && !assets.iter().any(|asset| asset.os == "macos") {
         bail!("no architecture-specific DMG assets found for manifest");
     }
 
@@ -101,10 +153,7 @@ pub(crate) fn run(args: &Args) -> Result<()> {
         published_at: OffsetDateTime::from(SystemTime::now())
             .format(&Rfc3339)
             .context("could not format current timestamp")?,
-        release_url: format!(
-            "https://github.com/AprilNEA/OpenLogi/releases/tag/{}",
-            args.tag
-        ),
+        release_url,
         assets,
     };
 

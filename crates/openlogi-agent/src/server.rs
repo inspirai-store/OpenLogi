@@ -57,6 +57,8 @@ pub struct AgentServer {
     /// Forwards each connection's [`ClientKind`] declaration to the
     /// dormancy gate.
     pub demand: tokio::sync::mpsc::UnboundedSender<ClientKind>,
+    shutdown: crate::shutdown::ShutdownRequestSender,
+    update_gate: Arc<tokio::sync::RwLock<bool>>,
 }
 
 impl AgentServer {
@@ -72,10 +74,11 @@ impl AgentServer {
         inputs: (
             ActionDispatcher,
             Arc<openlogi_agent_core::g604::G604Service>,
+            crate::shutdown::ShutdownRequestSender,
         ),
     ) -> (Self, tokio::sync::mpsc::UnboundedReceiver<ClientKind>) {
         let ring_haptics = RingHapticPlayer::spawn(shared.clone());
-        let (dispatcher, g604) = inputs;
+        let (dispatcher, g604, shutdown) = inputs;
         let (demand, declarations) = tokio::sync::mpsc::unbounded_channel();
         (
             Self {
@@ -90,6 +93,8 @@ impl AgentServer {
                 dispatcher,
                 ring_haptics,
                 demand,
+                shutdown,
+                update_gate: Arc::default(),
             },
             declarations,
         )
@@ -104,6 +109,30 @@ impl AgentServer {
               future off a dozen of them with `std::future::ready`"
 )]
 impl Agent for AgentServer {
+    async fn prepare_update(self, _: Context) -> Result<(), String> {
+        // Keep restoration alive even if the installer times out or disconnects
+        // while a flash transaction is in flight, as for g604_command below.
+        tokio::spawn(async move {
+            let mut prepared = self.update_gate.write().await;
+            self.dispatcher.macros().stop_all();
+            if self.g604.status().recovery_pending {
+                self.g604
+                    .command(openlogi_core::macros::g604::G604Command::Restore)
+                    .await?;
+            }
+            *prepared = true;
+            Ok(())
+        })
+        .await
+        .map_err(|error| error.to_string())?
+    }
+
+    async fn quit_for_update(self, _: Context) {
+        if *self.update_gate.read().await {
+            let _ = self.shutdown.send(crate::shutdown::ShutdownRequest::Update);
+        }
+    }
+
     async fn macro_status(self, _: Context) -> openlogi_core::macros::MacroStatus {
         self.dispatcher.macros().status()
     }
@@ -112,6 +141,10 @@ impl Agent for AgentServer {
         _: Context,
         command: openlogi_core::macros::g604::G604Command,
     ) -> Result<openlogi_core::macros::g604::G604Status, String> {
+        let prepared = self.update_gate.read().await;
+        if *prepared {
+            return Err("Agent is handing over to the installer".into());
+        }
         let service = Arc::clone(&self.g604);
         tokio::spawn(async move { service.command(command).await })
             .await
@@ -124,6 +157,10 @@ impl Agent for AgentServer {
     ) -> Result<openlogi_core::macros::MacroReply, String> {
         use openlogi_core::binding::{Action, Binding};
         use openlogi_core::macros::{MacroCommand as C, MacroReply};
+        let prepared = self.update_gate.read().await;
+        if *prepared {
+            return Err("Agent is handing over to the installer".into());
+        }
         let handle = self.dispatcher.macros();
         match command {
             C::Record => handle.record(true).await.map_err(|e| e.to_string())??,

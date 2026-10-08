@@ -1,4 +1,26 @@
-# G604 蓝牙宏工具（Windows 开发版）
+# G604 蓝牙宏工具（Windows）
+
+## 安装与在线更新
+
+从 [inspirai-store/OpenLogi Releases](https://github.com/inspirai-store/OpenLogi/releases/latest) 下载 Windows x64 的 `.msi`，双击安装。安装位置为 `%LocalAppData%\Programs\OpenLogiMacros`，不需要管理员权限；开始菜单中打开 **OpenLogi G604 Macros**。此版本沿用之前便携版的 `%USERPROFILE%\.config\openlogi-dev`，宏绑定和恢复记录会保留。
+
+在“设置 → 更新”检查新版本。开启检查更新后，每次启动会检查一次；开启自动安装后，新版本会先下载并暂存，点击“重启安装”才应用。更新只从这个 fork 的 GitHub Releases 获取匹配的 MSI，并验证 SHA-256 和 minisign 签名；缺少校验信息、签名无效或下载失败不会应用更新。便携版升级后也会打开已安装的版本。
+
+安装、升级和卸载会通过运行中的 agent 停止宏、恢复鼠标配置并正常退出。恢复失败时安装会中止，原安装与恢复记录保留；重新连接鼠标，在宏页面恢复后重试。旧协议的 agent 必须先通过自己的托盘退出，安装器不会强行结束它。卸载不会删除用户配置。
+
+更新签名用于验证包来源，本 fork 暂无 Windows Authenticode 证书。系统可能显示“未知发布者”。六个侧键仍需在自己的鼠标上完成校准和验证后才能启用。
+
+### 构建和发布
+
+先提交源码，使用 Rust 1.98.0、WiX 6.0.2（含 UI 扩展）和 minisign 0.12，运行：
+
+```powershell
+scripts/g604-macros/build.ps1 -Installer -SigningKey 'C:\path-outside-repository\update.key'
+```
+
+可用 `-WixPath`、`-MinisignPath` 和 `-OutputDirectory` 指定工具与输出路径。生成 MSI、便携 ZIP、签名、SHA256SUMS 和 GitHub 更新清单 `latest.json`；私钥必须保存在仓库外，公钥为 `packaging/windows/update.pub`。
+
+GitHub 的 **G604 Windows release** 工作流使用 `G604_UPDATE_SIGNING_KEY` secret 构建同样的包，先上传构建产物，再创建新的 `g604-{version}` Release。后续发布需提高统一的 workspace 版本，不能覆盖旧 Release；上游的 `v{version}` 标签仍由 release-plz 管理。
 
 这个版本直接扩展 OpenLogi。宏库、时间线和绑定在桌面界面编辑，键盘捕获、宏回放和 G604 板载配置由 agent 负责。
 

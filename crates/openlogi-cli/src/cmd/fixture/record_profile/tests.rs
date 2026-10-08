@@ -106,6 +106,11 @@ impl TestAgent {
     reason = "the in-process IPC service intentionally returns immediate scripted values"
 )]
 impl Agent for TestAgent {
+    async fn prepare_update(self, _: TarpcContext) -> Result<(), String> {
+        Err("Installer handoff is not part of this fixture".into())
+    }
+    async fn quit_for_update(self, _: TarpcContext) {}
+
     async fn macro_status(self, _: tarpc::context::Context) -> openlogi_core::macros::MacroStatus {
         openlogi_core::macros::MacroStatus::default()
     }

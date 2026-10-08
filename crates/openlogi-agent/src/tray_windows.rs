@@ -216,9 +216,7 @@ unsafe fn add_tray_icon(hwnd: HWND) {
     reason = "the PNG is embedded at build time and is a few kilobytes"
 )]
 unsafe fn tray_icon() -> HICON {
-    const BLACK: &[u8] = include_bytes!("../assets/tray-icon@2x.png");
-    const WHITE: &[u8] = include_bytes!("../assets/tray-icon-white@2x.png");
-    let png: &[u8] = if taskbar_is_light() { BLACK } else { WHITE };
+    let png: &[u8] = include_bytes!("../../../packaging/windows/fork-icon.png");
     // SAFETY: the buffer is a valid embedded PNG; the call copies it.
     let icon = unsafe {
         CreateIconFromResourceEx(
@@ -238,17 +236,6 @@ unsafe fn tray_icon() -> HICON {
     } else {
         icon
     }
-}
-
-/// Whether the taskbar renders light (needs the black glyph). Missing value
-/// means the Windows default: dark.
-fn taskbar_is_light() -> bool {
-    use winreg::RegKey;
-    use winreg::enums::HKEY_CURRENT_USER;
-    RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey(r"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize")
-        .and_then(|k| k.get_value::<u32, _>("SystemUsesLightTheme"))
-        .is_ok_and(|v| v == 1)
 }
 
 /// Show the context menu at the cursor and run the chosen command.
@@ -433,17 +420,8 @@ fn spawn_gui() {
     reason = "NOTIFYICONDATAW is a few hundred bytes"
 )]
 fn quit(hwnd: HWND) {
-    use sysinfo::{Pid, ProcessesToUpdate, System};
-    let mut system = System::new();
-    system.refresh_processes(ProcessesToUpdate::All, true);
-    for pid in gui_pids() {
-        if let Some(process) = system.process(Pid::from_u32(pid)) {
-            if process.kill() {
-                info!(pid, "tray Quit — terminated the GUI");
-            } else {
-                warn!(pid, "tray Quit — could not terminate the GUI");
-            }
-        }
+    if let Err(error) = close_gui_for_quit() {
+        warn!(%error, "could not close the GUI for tray quit");
     }
     // SAFETY: removing the icon this thread added.
     unsafe {
@@ -457,6 +435,23 @@ fn quit(hwnd: HWND) {
     info!("tray Quit — requesting graceful agent shutdown");
     let requests = SHUTDOWN_TX.with_borrow(Clone::clone);
     shutdown::request_tray_quit(requests.as_ref(), 0);
+}
+
+/// Close committed GUI clients so they cannot respawn an exiting agent.
+pub(crate) fn close_gui_for_quit() -> Result<(), String> {
+    use sysinfo::{Pid, ProcessesToUpdate, System};
+    let mut system = System::new();
+    system.refresh_processes(ProcessesToUpdate::All, true);
+    for pid in gui_pids() {
+        if let Some(process) = system.process(Pid::from_u32(pid)) {
+            if process.kill() {
+                info!(pid, "tray Quit — terminated the GUI");
+            } else {
+                return Err(format!("Could not close GUI process {pid}"));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// NUL-terminated UTF-16 for win32 W-APIs.

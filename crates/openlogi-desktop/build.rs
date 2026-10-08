@@ -23,6 +23,7 @@ use std::{env, fs};
 
 fn main() {
     println!("cargo:rerun-if-env-changed=OPENLOGI_UPDATE_MANIFEST_URL");
+    println!("cargo:rerun-if-env-changed=OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY");
     println!("cargo:rerun-if-env-changed=OPENLOGI_THEMES_DIR");
 
     embed_windows_resources();
@@ -73,7 +74,7 @@ fn embed_windows_resources() {
     // rc.exe treats `\` in string literals as escapes; forward slashes are
     // accepted by every resource compiler embed-resource can drive.
     let icon = manifest_dir
-        .join("../../design/icon/openlogi.ico")
+        .join("../../packaging/windows/fork-icon.ico")
         .display()
         .to_string()
         .replace('\\', "/");

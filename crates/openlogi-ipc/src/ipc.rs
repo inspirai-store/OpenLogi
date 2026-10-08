@@ -67,7 +67,8 @@ pub use succession::Identity;
 ///      `HidppOperation::ReadFnLock` appended.
 /// v33: `Agent::unpair_device` appended.
 /// v34: `KeyCombo` gains the Super modifier bit (`Super`, `Win`, `Meta`).
-pub const PROTOCOL_VERSION: u32 = 35;
+// v36 appends checked installer preparation and graceful update shutdown.
+pub const PROTOCOL_VERSION: u32 = 36;
 
 /// Environment variable through which the agent hands a supervised helper the
 /// run token it will serve, so the helper knows which agent it belongs to
@@ -593,4 +594,10 @@ pub trait Agent {
     async fn g604_command(
         command: openlogi_core::macros::g604::G604Command,
     ) -> Result<openlogi_core::macros::g604::G604Status, String>;
+    /// Stop macros and restore G604 firmware before an installer changes files.
+    /// A restoration failure leaves the agent alive and aborts installation.
+    async fn prepare_update() -> Result<(), String>;
+    /// Leave through the normal lifecycle after a successful preparation.
+    /// The caller waits for the agent lock to be released before installing.
+    async fn quit_for_update();
 }

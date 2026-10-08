@@ -1,0 +1,12 @@
+id: updater-source-owner
+language: rust
+severity: error
+message: Release source and verification belong in platform/updater/source.rs.
+rule:
+  any:
+    - pattern: StaticManifestSource::new($$$ARGS)
+    - pattern: EngineConfig::new($$$ARGS)
+files:
+  - crates/openlogi-desktop/**/*.rs
+ignores:
+  - crates/openlogi-desktop/src/platform/updater/source.rs

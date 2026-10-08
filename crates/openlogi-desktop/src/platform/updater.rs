@@ -13,21 +13,12 @@
 //! entity, so a launch-time result is already visible when the window opens.
 
 use gpui::{App, AppContext as _, Entity, Global, Subscription};
-use gpui_updater::{
-    EngineConfig, StaticManifestSource, UpdateStatus, Updater, Verification, Version,
-};
+use gpui_updater::{UpdateStatus, Updater, Version};
 use openlogi_core::config::AppSettings;
 
 use crate::state::AppState;
 
-const MANIFEST_URL: &str = match option_env!("OPENLOGI_UPDATE_MANIFEST_URL") {
-    Some(url) => url,
-    None => "https://updates.openlogi.org/channels/stable/latest.json",
-};
-
-/// Base64 minisign public key, embedded at build time by the release workflow.
-/// Absent in local/dev builds, which then fail closed (see [`new_entity`]).
-const MINISIGN_PUBLIC_KEY: Option<&str> = option_env!("OPENLOGI_UPDATE_MINISIGN_PUBLIC_KEY");
+mod source;
 
 /// App-global handle to the shared updater entity.
 #[derive(Clone)]
@@ -44,54 +35,20 @@ impl Global for AutoInstaller {}
 
 /// Build a fresh updater entity for this app's static update manifest and
 /// running version. The asset is matched by platform metadata and, under
-/// [`Verification::Strict`], verified against both the manifest's SHA-256 and a
-/// minisign signature made with [`MINISIGN_PUBLIC_KEY`].
+/// `Verification::Strict`, verified against both the manifest's SHA-256 and a
+/// minisign signature made with the fork public key.
 ///
-/// Release builds embed that key and update normally. A build without it
-/// (local/dev) fails closed: `check` returns an error rather than installing an
-/// unverified artifact.
+/// Every build embeds the fork public key. Missing signatures or checksums
+/// fail closed before an artifact can be staged.
 pub fn new_entity(cx: &mut App) -> Entity<Updater> {
     cx.new(|cx| {
-        let source = StaticManifestSource::new(MANIFEST_URL)
-            .os(std::env::consts::OS)
-            .arch(release_arch())
-            .format(release_format());
         #[expect(
             clippy::expect_used,
             reason = "CARGO_PKG_VERSION is cargo-provided and always valid semver"
         )]
         let version = Version::parse(env!("CARGO_PKG_VERSION")).expect("valid embedded version");
-        let mut config = EngineConfig::new(version).verification(Verification::Strict);
-        if let Some(key) = minisign_public_key() {
-            config = config.minisign_public_key(key);
-        }
-        Updater::new(source, config, cx)
+        Updater::new(source::new(), source::config(version), cx)
     })
-}
-
-/// The embedded minisign public key, trimmed, or `None` when the build did not
-/// bake one in.
-fn minisign_public_key() -> Option<&'static str> {
-    MINISIGN_PUBLIC_KEY
-        .map(str::trim)
-        .filter(|key| !key.is_empty())
-}
-
-fn release_arch() -> &'static str {
-    match std::env::consts::ARCH {
-        "aarch64" => "arm64",
-        arch => arch,
-    }
-}
-
-fn release_format() -> &'static str {
-    match std::env::consts::OS {
-        "macos" => "dmg",
-        // Matches the `format` field `xtask release latest-json` emits for the
-        // per-arch MSIs, which gpui-updater applies via its staged msiexec flow.
-        "windows" => "msi",
-        _ => "tar.gz",
-    }
 }
 
 /// Publish the shared updater as a global and, when the user has opted in, run

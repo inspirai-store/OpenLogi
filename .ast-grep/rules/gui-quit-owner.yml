@@ -1,0 +1,10 @@
+id: gui-quit-owner
+language: rust
+severity: error
+message: Closing GUI clients for tray quit and installation belongs in tray_windows::close_gui_for_quit.
+files:
+  - crates/openlogi-agent/src/maintenance.rs
+rule:
+  any:
+    - pattern: $PROCESS.kill()
+    - pattern: TerminateProcess($$$)

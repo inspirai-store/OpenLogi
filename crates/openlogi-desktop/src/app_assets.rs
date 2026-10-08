@@ -16,7 +16,7 @@ pub const LOGO: &str = "openlogi.png";
 /// The 1024×1024 app icon, embedded into the binary.
 const LOGO_BYTES: &[u8] = include_bytes!(concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../design/icon/openlogi.png"
+    "/../../packaging/windows/fork-icon.png"
 ));
 
 /// GPUI asset source: the app logo, the shared ring glyphs, then

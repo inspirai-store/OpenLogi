@@ -173,7 +173,13 @@ fn representative_smartshift_status() -> SmartShiftStatus {
 /// that makes that visible in the same diff.
 #[test]
 fn protocol_version_is_pinned() {
-    assert_eq!(PROTOCOL_VERSION, 35);
+    assert_eq!(PROTOCOL_VERSION, 36);
+}
+
+#[test]
+fn installer_methods_are_appended_after_g604() {
+    assert_wire(&AgentRequest::PrepareUpdate {}, "22");
+    assert_wire(&AgentRequest::QuitForUpdate {}, "23");
 }
 
 #[test]

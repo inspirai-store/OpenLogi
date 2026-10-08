@@ -1,4 +1,10 @@
-param([string]$OutputDirectory)
+param(
+    [string]$OutputDirectory,
+    [switch]$Installer,
+    [string]$SigningKey,
+    [string]$WixPath = 'wix',
+    [string]$MinisignPath = 'minisign'
+)
 
 $ErrorActionPreference = 'Stop'
 $taskRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
@@ -17,11 +23,19 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read the source commit.' }
     $taskBranch = & git branch --show-current
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read the source branch.' }
+    if ($Installer) {
+        if (!$SigningKey -or !(Test-Path -LiteralPath $SigningKey)) { throw 'Installer requires a private signing key outside the repository.' }
+        if (!(Get-Command $WixPath -ErrorAction SilentlyContinue) -or !(Get-Command $MinisignPath -ErrorAction SilentlyContinue)) { throw 'Install WiX 6.0.2 and minisign, or pass their executable paths.' }
+    }
 
     & cargo +1.98.0 build --release --locked -p openlogi-agent -p openlogi-desktop -p openlogi-overlay --bin openlogi-agent --bin openlogi-desktop --bin openlogi-overlay
     if ($LASTEXITCODE -ne 0) { throw 'Release build failed.' }
     & cargo +1.98.0 build --release --locked -p openlogi-agent --example g604_recovery
     if ($LASTEXITCODE -ne 0) { throw 'Recovery utility build failed.' }
+    if ($Installer) {
+        & cargo +1.98.0 build --release --locked -p openlogi --bin openlogi
+        if ($LASTEXITCODE -ne 0) { throw 'CLI build failed.' }
+    }
 
     $taskBundleName = 'OpenLogi-G604-Macros-windows-x64-' + $taskCommit.Substring(0, 8)
     $taskBundle = Join-Path $OutputDirectory $taskBundleName
@@ -69,6 +83,29 @@ try {
     ((Get-FileHash -LiteralPath $taskZip -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + [System.IO.Path]::GetFileName($taskZip)) | Set-Content -LiteralPath ($taskZip + '.sha256') -Encoding ASCII
     Write-Output "Package: $taskBundle"
     Write-Output "Archive: $taskZip"
+    if ($Installer) {
+        $taskTag = 'g604-' + $taskVersion
+        $taskMsi = Join-Path $OutputDirectory ("OpenLogi-$taskTag-windows-x86_64.msi")
+        if (Test-Path -LiteralPath $taskMsi) { throw "Installer already exists: $taskMsi" }
+        & $WixPath build (Join-Path $taskRoot 'packaging\windows\OpenLogi.wxs') -ext WixToolset.UI.wixext -arch x64 `
+            -d "Version=$taskVersion" -d "ExeFile=$taskRoot\target\release\openlogi-desktop.exe" `
+            -d "AgentExeFile=$taskRoot\target\release\openlogi-agent.exe" -d "OverlayExeFile=$taskRoot\target\release\openlogi-overlay.exe" `
+            -d "CliExeFile=$taskRoot\target\release\openlogi.exe" -d "RecoveryExeFile=$taskRoot\target\release\examples\g604_recovery.exe" -o $taskMsi
+        if ($LASTEXITCODE -ne 0) { throw 'MSI build failed.' }
+        foreach ($taskArtifact in @($taskMsi, $taskZip)) {
+            & $MinisignPath -S -s $SigningKey -m $taskArtifact -t "$taskTag $taskCommit"
+            if ($LASTEXITCODE -ne 0) { throw 'Update signature failed.' }
+            & $MinisignPath -V -P ((Get-Content (Join-Path $taskRoot 'packaging\windows\update.pub') -Raw).Trim()) -m $taskArtifact
+            if ($LASTEXITCODE -ne 0) { throw 'Signature does not match the embedded public key.' }
+        }
+        @($taskMsi, $taskZip) | ForEach-Object {
+            (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + [System.IO.Path]::GetFileName($_)
+        } | Set-Content -LiteralPath (Join-Path $OutputDirectory 'SHA256SUMS') -Encoding ASCII
+        & cargo +1.98.0 run --locked -p xtask -- release latest-json --dist $OutputDirectory --output (Join-Path $OutputDirectory 'latest.json') `
+            --tag $taskTag --version $taskVersion --github-repository inspirai-store/OpenLogi --windows-only
+        if ($LASTEXITCODE -ne 0) { throw 'Update manifest failed.' }
+        Write-Output "Installer: $taskMsi"
+    }
 } finally {
     Pop-Location
 }

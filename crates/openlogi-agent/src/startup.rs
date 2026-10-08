@@ -46,7 +46,10 @@ pub(crate) struct Core {
 /// arming: no permission prompt, no device open, no helper spawn. Binding
 /// ahead of the watchers and prompts lets a dormant agent hear demand, and
 /// keeps a first-run consent dialog from blackholing the GUI's connect.
-pub(crate) async fn bootstrap(config: Config) -> Option<Core> {
+pub(crate) async fn bootstrap(
+    config: Config,
+    shutdown: crate::shutdown::ShutdownRequestSender,
+) -> Option<Core> {
     let macro_config = config.clone();
     // The orchestrator is shared with the IPC server and mutated by the
     // select loop, so it lives behind an async mutex; locks are brief. The
@@ -80,6 +83,7 @@ pub(crate) async fn bootstrap(config: Config) -> Option<Core> {
         Arc::clone(&pairing),
         Arc::clone(&event_monitor),
         &inputs,
+        shutdown,
     );
     Some(Core {
         orchestrator,
@@ -99,6 +103,7 @@ fn spawn_ipc_server(
     pairing: Arc<pairing::PairingManager>,
     event_monitor: Arc<EventMonitor>,
     inputs: &InputServices,
+    shutdown: crate::shutdown::ShutdownRequestSender,
 ) -> (
     server::RingHapticPlayer,
     tokio::sync::mpsc::UnboundedReceiver<openlogi_ipc::ClientKind>,
@@ -110,7 +115,11 @@ fn spawn_ipc_server(
         pairing,
         event_monitor,
         Arc::clone(&inputs.ring),
-        (inputs.dispatcher.clone(), Arc::clone(&inputs.g604)),
+        (
+            inputs.dispatcher.clone(),
+            Arc::clone(&inputs.g604),
+            shutdown,
+        ),
     );
     let ring_haptics = server.ring_haptics.clone();
     tokio::spawn(server::run(server));

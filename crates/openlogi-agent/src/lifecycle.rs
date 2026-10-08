@@ -111,7 +111,7 @@ impl Booted {
         let capture_mouse_events = config.app_settings.capture_mouse_events;
         #[cfg(target_os = "macos")]
         let launch_at_login = config.app_settings.launch_at_login;
-        let core = startup::bootstrap(config).await?;
+        let core = startup::bootstrap(config, shutdown_requests.sender()).await?;
         Some(Self {
             core,
             signals: ShutdownSignals::install(),
@@ -174,7 +174,7 @@ impl Booted {
                         info!("tray quit while dormant — exiting");
                         return None;
                     }
-                    ShutdownRequest::Uninstalled => {
+                    ShutdownRequest::Uninstalled | ShutdownRequest::Update => {
                         info!("uninstalled while dormant — exiting");
                         return None;
                     }
@@ -518,6 +518,9 @@ impl Running {
             // event tap and firmware diversions go with us (#807, #1097).
             ShutdownRequest::Uninstalled => {
                 self.shut_down("the app was uninstalled", None).await;
+            }
+            ShutdownRequest::Update => {
+                self.shut_down("installer handoff", None).await;
             }
             ShutdownRequest::Restart { path, retry } => {
                 self.hidpp_watchers

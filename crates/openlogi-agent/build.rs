@@ -23,7 +23,7 @@ fn main() {
     // rc.exe treats `\` in string literals as escapes; forward slashes are
     // accepted by every resource compiler embed-resource can drive.
     let icon = manifest_dir
-        .join("../../design/icon/openlogi.ico")
+        .join("../../packaging/windows/fork-icon.ico")
         .display()
         .to_string()
         .replace('\\', "/");

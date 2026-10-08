@@ -717,6 +717,11 @@ fn snapshot_of(state: &State) -> AgentSnapshot {
               the real server impl, which is the point of the mock"
 )]
 impl Agent for MockAgent {
+    async fn prepare_update(self, _: Context) -> Result<(), String> {
+        Err("Installer handoff is unavailable in the mock agent".into())
+    }
+    async fn quit_for_update(self, _: Context) {}
+
     async fn macro_status(self, _: Context) -> openlogi_core::macros::MacroStatus {
         openlogi_core::macros::MacroStatus::default()
     }

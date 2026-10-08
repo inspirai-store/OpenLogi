@@ -1,6 +1,36 @@
 use super::*;
 
 #[test]
+fn windows_only_github_manifest_uses_signed_msi_and_explicit_version() {
+    let dist = tempfile::tempdir().unwrap();
+    let name = "OpenLogi-g604-0.8.12-windows-x86_64.msi";
+    fs_err::write(dist.path().join(name), b"msi").unwrap();
+    fs_err::write(dist.path().join(format!("{name}.minisig")), b"signature").unwrap();
+    let args = Args {
+        dist: dist.path().into(),
+        output: dist.path().join("latest.json"),
+        tag: "g604-0.8.12".into(),
+        base_url: "https://unused.example".into(),
+        github_repository: Some("inspirai-store/OpenLogi".into()),
+        version: Some("0.8.12".into()),
+        windows_only: true,
+        include_windows: false,
+    };
+    run(&args).unwrap();
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs_err::read(&args.output).unwrap()).unwrap();
+    assert_eq!(manifest["version"], "0.8.12");
+    assert_eq!(
+        manifest["assets"][0]["url"],
+        format!("https://github.com/inspirai-store/OpenLogi/releases/download/g604-0.8.12/{name}")
+    );
+    assert_eq!(manifest["assets"][0]["format"], "msi");
+    assert_eq!(manifest["assets"][0]["sha256"].as_str().unwrap().len(), 64);
+    fs_err::remove_file(dist.path().join(name)).unwrap();
+    run(&args).unwrap_err();
+}
+
+#[test]
 fn collect_assets_requires_minisign_signature_for_each_dmg() {
     let dist = tempfile::tempdir().unwrap();
     fs_err::write(dist.path().join("OpenLogi-v1.2.3-macos-arm64.dmg"), b"dmg").unwrap();

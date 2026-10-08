@@ -21,6 +21,8 @@ mod autostart;
 mod binary_watch;
 mod lifecycle;
 mod logging;
+#[cfg(target_os = "windows")]
+mod maintenance;
 mod overlay;
 mod pairing;
 #[cfg(target_os = "linux")]
@@ -48,6 +50,10 @@ use tracing::{info, warn};
 
 fn main() {
     logging::init();
+    #[cfg(target_os = "windows")]
+    if std::env::args().any(|arg| arg == "--shutdown-for-update") {
+        maintenance::run();
+    }
 
     // Single-instance guard: the agent owns all device I/O, the CGEventTap, and
     // the IPC socket, so a second agent must never start — launchd's KeepAlive

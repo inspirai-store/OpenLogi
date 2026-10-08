@@ -23,6 +23,8 @@ pub(crate) enum ShutdownRequest {
     },
     /// The installed application disappeared from disk.
     Uninstalled,
+    /// An installer has restored device state and needs unlocked executables.
+    Update,
     /// The executable was replaced and the process should become `path`.
     Restart {
         path: PathBuf,
@@ -38,18 +40,31 @@ pub(crate) type ShutdownRequestSender = mpsc::UnboundedSender<ShutdownRequest>;
 
 /// The single non-signal shutdown source carried through every lifecycle
 /// stage so process replacement cannot bypass armed firmware ownership.
-pub(crate) struct ShutdownRequests(mpsc::UnboundedReceiver<ShutdownRequest>);
+pub(crate) struct ShutdownRequests {
+    receiver: mpsc::UnboundedReceiver<ShutdownRequest>,
+    sender: ShutdownRequestSender,
+}
 
 impl ShutdownRequests {
     pub(crate) async fn recv(&mut self) -> Option<ShutdownRequest> {
-        self.0.recv().await
+        self.receiver.recv().await
+    }
+
+    pub(crate) fn sender(&self) -> ShutdownRequestSender {
+        self.sender.clone()
     }
 }
 
 /// Build the process-wide non-signal shutdown channel.
 pub(crate) fn request_channel() -> (ShutdownRequestSender, ShutdownRequests) {
     let (tx, rx) = mpsc::unbounded_channel();
-    (tx, ShutdownRequests(rx))
+    (
+        tx.clone(),
+        ShutdownRequests {
+            receiver: rx,
+            sender: tx,
+        },
+    )
 }
 
 /// Ask the async lifecycle to quit, then block this tray thread until the
