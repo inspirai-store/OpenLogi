@@ -717,6 +717,23 @@ fn snapshot_of(state: &State) -> AgentSnapshot {
               the real server impl, which is the point of the mock"
 )]
 impl Agent for MockAgent {
+    async fn macro_status(self, _: Context) -> openlogi_core::macros::MacroStatus {
+        openlogi_core::macros::MacroStatus::default()
+    }
+    async fn macro_command(
+        self,
+        _: Context,
+        _: openlogi_core::macros::MacroCommand,
+    ) -> Result<openlogi_core::macros::MacroReply, String> {
+        Err("Native macro input is unavailable in the mock agent".into())
+    }
+    async fn g604_command(
+        self,
+        _: Context,
+        _: openlogi_core::macros::g604::G604Command,
+    ) -> Result<openlogi_core::macros::g604::G604Status, String> {
+        Err("Physical G604 calibration is unavailable in the mock agent".into())
+    }
     async fn protocol_version(self, _: Context) -> u32 {
         PROTOCOL_VERSION
     }

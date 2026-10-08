@@ -187,6 +187,8 @@ pub enum Action {
     /// cancellation and shutdown. Dispatchers without a release context must
     /// degrade this action to a balanced tap rather than leave keys held.
     HoldShortcut(KeyCombo),
+    /// Execute a stable ID in the host macro library. The agent owns playback.
+    RunMacro(String),
 }
 
 /// One step in a [`Action::Workflow`]. A workflow is a `Vec<WorkflowStep>`
@@ -314,6 +316,7 @@ macro_rules! derive_action_core {
                     Action::Workflow(steps) => format!("Workflow ({} steps)", steps.len()),
                     Action::OpenApplication(target) => format!("Open {}", target.display_name()),
                     Action::HoldShortcut(combo) => format!("Hold {}", combo.rendered_label()),
+                    Action::RunMacro(id) => format!("Macro: {id}"),
                 }
             }
 
@@ -333,7 +336,8 @@ macro_rules! derive_action_core {
                     | Action::RunShellCommand(_)
                     | Action::Workflow(_)
                     | Action::OpenApplication(_)
-                    | Action::HoldShortcut(_) => None,
+                    | Action::HoldShortcut(_)
+                    | Action::RunMacro(_) => None,
                 }
             }
 
@@ -362,7 +366,8 @@ macro_rules! derive_action_core {
                     | Action::RunAppleScript(_)
                     | Action::RunShellCommand(_)
                     | Action::Workflow(_)
-                    | Action::HoldShortcut(_) => Category::Editing,
+                    | Action::HoldShortcut(_)
+                    | Action::RunMacro(_) => Category::Editing,
                     Action::SetDpiPreset(_) => Category::Dpi,
                     Action::OpenApplication(_) => Category::System,
                 }

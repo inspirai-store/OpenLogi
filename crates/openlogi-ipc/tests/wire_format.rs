@@ -52,6 +52,77 @@ use openlogi_ipc::{
 };
 use succession::{Compat, Run};
 
+#[test]
+fn macro_v35_dtos_and_appended_requests_are_pinned() {
+    use openlogi_core::binding::{Action, ButtonId};
+    use openlogi_core::macros::g604::{G604Command, G604Status, OnboardBackup};
+    use openlogi_core::macros::{
+        MacroCommand, MacroConfig, MacroDefinition, MacroEvent, MacroInput, MacroMode, MacroReply,
+        MacroStatus,
+    };
+    let key = MacroInput::Key {
+        scan_code: 2,
+        extended: false,
+    };
+    assert_wire(&key, "000200");
+    assert_wire(&MacroEvent::Down(key), "00000200");
+    assert_wire(&MacroEvent::Up(MacroInput::Right), "0102");
+    assert_wire(&MacroEvent::Delay(50), "0332");
+    assert_wire(&MacroMode::Repeat(3), "0103");
+    assert_wire(&MacroMode::Sequence, "04");
+    assert_wire(&ButtonId::G4, "024734");
+    assert_wire(&HidppOperation::ReadOnboardProfiles, "10");
+    assert_wire(&HidppOperation::WriteOnboardProfiles, "11");
+    let definition = MacroDefinition {
+        name: "x".into(),
+        mode: MacroMode::Once,
+        start: vec![],
+        cycle: vec![MacroEvent::Down(key)],
+        finish: vec![],
+        interval_ms: 50,
+    };
+    assert_wire(&definition, "0178000001000002000032");
+    assert_wire(
+        &MacroConfig::default(),
+        "0012636f6e74726f6c2b6f7074696f6e2b663132",
+    );
+    assert_wire(
+        &MacroReply::default(),
+        "0012636f6e74726f6c2b6f7074696f6e2b66313200",
+    );
+    assert_wire(&MacroStatus::default(), "000000000000");
+    assert_wire(&G604Status::default(), "0000000000000000000000000000000000");
+    assert_wire(&G604Command::Calibrate(5), "0205");
+    assert_wire(
+        &AgentRequest::MacroCommand {
+            command: MacroCommand::StopAll,
+        },
+        "1f09",
+    );
+    assert_wire(&AgentRequest::MacroStatus {}, "20");
+    assert_wire(
+        &AgentRequest::G604Command {
+            command: G604Command::Restore,
+        },
+        "2106",
+    );
+    let backup = OnboardBackup {
+        route: DeviceRoute::Direct {
+            vendor_id: 0x046d,
+            product_id: 0xb024,
+        },
+        descriptor: vec![1],
+        mode: 2,
+        profile: 0,
+        dpi: 800,
+        directory: vec![2],
+        spare: vec![3],
+        active: vec![4],
+    };
+    assert_wire(&backup, "02fb6d04fb24b001010200fb2003010201030104");
+    assert_wire(&Action::RunMacro("x".into()), "350178");
+}
+
 /// Serialize exactly as the transport does (`tokio_serde::formats::Bincode`
 /// with its default `O = bincode::DefaultOptions`).
 fn wire_bytes<T: serde::Serialize>(value: &T) -> String {
@@ -102,7 +173,7 @@ fn representative_smartshift_status() -> SmartShiftStatus {
 /// that makes that visible in the same diff.
 #[test]
 fn protocol_version_is_pinned() {
-    assert_eq!(PROTOCOL_VERSION, 34);
+    assert_eq!(PROTOCOL_VERSION, 35);
 }
 
 #[test]

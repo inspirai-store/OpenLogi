@@ -71,6 +71,8 @@ enum Route {
 enum DetailTab {
     /// The mouse model with clickable button hotspots.
     Buttons,
+    /// Macro library, recording, playback and G604 side-button calibration.
+    Macros,
     /// Cursor-centred eight-slot action launcher.
     ActionsRing,
     /// The keyboard function-row remapper with clickable F-key bubbles.
@@ -117,6 +119,9 @@ impl DetailTab {
         if caps.buttons && can_show_mouse_model {
             tabs.push(Self::Buttons);
         }
+        if can_show_mouse_model {
+            tabs.push(Self::Macros);
+        }
         if caps.haptic_panel || (caps.buttons && can_show_mouse_model) {
             tabs.push(Self::ActionsRing);
         }
@@ -152,6 +157,7 @@ impl DetailTab {
     fn label(self) -> gpui::SharedString {
         match self {
             Self::Buttons => tr!("device.buttons"),
+            Self::Macros => tr!("macros.title"),
             Self::ActionsRing => tr!("action_ring.actions_ring"),
             Self::Keys => tr!("device.keys"),
             Self::Pointer => tr!("device.pointer"),
@@ -167,6 +173,7 @@ pub struct AppView {
     focus_handle: FocusHandle,
     route: Route,
     mouse_model: Entity<MouseModelView>,
+    macro_panel: Entity<crate::features::macros::MacroPanel>,
     action_ring_panel: Entity<ActionRingPanel>,
     keyboard_model: Entity<FunctionRowView>,
     dpi_panel: Entity<DpiPanel>,
@@ -240,6 +247,7 @@ impl AppView {
         }
 
         let mouse_model = cx.new(|cx| MouseModelView::new(window, cx));
+        let macro_panel = cx.new(|cx| crate::features::macros::MacroPanel::new(window, cx));
         let action_ring_panel = cx.new(ActionRingPanel::new);
         let keyboard_model = cx.new(FunctionRowView::new);
         let dpi_panel = cx.new(DpiPanel::new);
@@ -307,6 +315,7 @@ impl AppView {
             focus_handle,
             route: Route::Home,
             mouse_model,
+            macro_panel,
             action_ring_panel,
             keyboard_model,
             dpi_panel,
@@ -359,6 +368,8 @@ impl AppView {
     /// untouched — the route is purely presentational.
     fn go_home(&mut self, cx: &mut Context<Self>) {
         self.route = Route::Home;
+        self.macro_panel
+            .update(cx, |panel, cx| panel.set_visible(false, cx));
         cx.notify();
     }
 
@@ -624,6 +635,7 @@ impl AppView {
                 detail::detail_content(
                     &detail::DetailPanels {
                         mouse_model: &self.mouse_model,
+                        macro_panel: &self.macro_panel,
                         action_ring: &self.action_ring_panel,
                         keyboard_model: &self.keyboard_model,
                         dpi_panel: &self.dpi_panel,

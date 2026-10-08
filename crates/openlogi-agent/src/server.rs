@@ -42,6 +42,8 @@ use tracing::{info, warn};
 /// Shared handle to the agent's state, cloned per connection (and per request).
 #[derive(Clone)]
 pub struct AgentServer {
+    pub g604: Arc<openlogi_agent_core::g604::G604Service>,
+    macro_edits: Arc<Mutex<()>>,
     pub orchestrator: Arc<Mutex<Orchestrator>>,
     pub shared: SharedHandles,
     /// Everything the GUI observes, answered from here rather than recomposed
@@ -67,12 +69,18 @@ impl AgentServer {
         pairing: Arc<PairingManager>,
         event_monitor: SharedEventMonitor,
         action_ring: Arc<ActionRingManager>,
-        dispatcher: ActionDispatcher,
+        inputs: (
+            ActionDispatcher,
+            Arc<openlogi_agent_core::g604::G604Service>,
+        ),
     ) -> (Self, tokio::sync::mpsc::UnboundedReceiver<ClientKind>) {
         let ring_haptics = RingHapticPlayer::spawn(shared.clone());
+        let (dispatcher, g604) = inputs;
         let (demand, declarations) = tokio::sync::mpsc::unbounded_channel();
         (
             Self {
+                g604,
+                macro_edits: Arc::default(),
                 orchestrator,
                 shared,
                 observable,
@@ -96,6 +104,85 @@ impl AgentServer {
               future off a dozen of them with `std::future::ready`"
 )]
 impl Agent for AgentServer {
+    async fn macro_status(self, _: Context) -> openlogi_core::macros::MacroStatus {
+        self.dispatcher.macros().status()
+    }
+    async fn g604_command(
+        self,
+        _: Context,
+        command: openlogi_core::macros::g604::G604Command,
+    ) -> Result<openlogi_core::macros::g604::G604Status, String> {
+        let service = Arc::clone(&self.g604);
+        tokio::spawn(async move { service.command(command).await })
+            .await
+            .map_err(|e| e.to_string())?
+    }
+    async fn macro_command(
+        self,
+        _: Context,
+        command: openlogi_core::macros::MacroCommand,
+    ) -> Result<openlogi_core::macros::MacroReply, String> {
+        use openlogi_core::binding::{Action, Binding};
+        use openlogi_core::macros::{MacroCommand as C, MacroReply};
+        let handle = self.dispatcher.macros();
+        match command {
+            C::Record => handle.record(true).await.map_err(|e| e.to_string())??,
+            C::StopRecording => handle.record(false).await.map_err(|e| e.to_string())??,
+            C::Play {
+                definition,
+                delay_ms,
+            } => handle
+                .preview(definition, delay_ms)
+                .await
+                .map_err(|e| e.to_string())??,
+            C::Release(binding) => handle.release(binding),
+            C::StopAll => handle.stop_all(),
+            C::ImportGhub => {
+                return Ok(MacroReply {
+                    imports: openlogi_agent_core::macro_import::ghub()?,
+                    config: Config::load_or_default().map_err(|e| e.to_string())?.macros,
+                });
+            }
+            C::Library => {}
+            command => {
+                let _edit = self.macro_edits.lock().await;
+                let mut config = Config::load_or_default().map_err(|e| e.to_string())?;
+                match command {
+                    C::Save { id, definition } => {
+                        definition.validate().map_err(|e| e.to_string())?;
+                        if id.is_empty() || id.len() > 256 {
+                            return Err("Invalid macro ID".into());
+                        }
+                        config.macros.library.insert(id, definition);
+                    }
+                    C::Delete(id) => config.delete_macro(&id),
+                    C::Emergency(chord) => config.macros.emergency_stop = chord,
+                    C::Bind {
+                        device,
+                        button,
+                        application,
+                        id,
+                    } => {
+                        let action = id.map_or(Action::None, Action::RunMacro);
+                        if let Some(application) = application {
+                            config.set_per_app_binding(&device, &application, button, Some(action));
+                        } else {
+                            config.set_binding(&device, button, Binding::Single(action));
+                        }
+                    }
+                    _ => unreachable!(),
+                }
+                config.save_atomic().map_err(|e| e.to_string())?;
+                handle.configure(config.clone());
+                self.orchestrator.lock().await.reload_config(config);
+                self.dispatcher.cancel_all_buttons();
+            }
+        }
+        Ok(MacroReply {
+            config: Config::load_or_default().map_err(|e| e.to_string())?.macros,
+            imports: vec![],
+        })
+    }
     async fn protocol_version(self, _: Context) -> u32 {
         PROTOCOL_VERSION
     }
@@ -121,6 +208,7 @@ impl Agent for AgentServer {
                 #[cfg(target_os = "macos")]
                 let app_icon = config.app_settings.app_icon;
                 let language = config.app_settings.language.clone();
+                self.dispatcher.macros().configure(config.clone());
                 self.orchestrator.lock().await.reload_config(config);
                 self.dispatcher.cancel_all_buttons();
                 // The GUI's launch-at-login toggle reaches us through this

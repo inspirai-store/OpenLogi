@@ -90,6 +90,7 @@ pub(super) fn detail_header(
 /// Long-lived child panels rendered by the device workspace.
 pub(super) struct DetailPanels<'a> {
     pub mouse_model: &'a gpui::Entity<MouseModelView>,
+    pub macro_panel: &'a gpui::Entity<crate::features::macros::MacroPanel>,
     pub action_ring: &'a gpui::Entity<ActionRingPanel>,
     pub keyboard_model: &'a gpui::Entity<FunctionRowView>,
     pub dpi_panel: &'a gpui::Entity<DpiPanel>,
@@ -112,10 +113,20 @@ pub(super) fn detail_content(
     cx: &mut Context<AppView>,
 ) -> impl IntoElement {
     let pal = theme::palette(cx);
+    panels.macro_panel.update(cx, |panel, cx| {
+        panel.set_visible(active == DetailTab::Macros, cx);
+    });
     let online = AppState::try_read(cx)
         .and_then(AppState::current_record)
         .is_some_and(|record| record.online);
     let content = match active {
+        DetailTab::Macros => v_flex()
+            .flex_1()
+            .w_full()
+            .min_h_0()
+            .children(button_profile_scope_bar(profile_icons, app_catalog, cx))
+            .child(panels.macro_panel.clone())
+            .into_any_element(),
         DetailTab::Buttons => {
             buttons_tab(panels.mouse_model, profile_icons, app_catalog, cx).into_any_element()
         }
@@ -232,6 +243,9 @@ fn detail_navigation(
                 .child(tab.label())
                 .on_click(cx.listener(move |this, _, _, cx| {
                     this.active_tab = tab;
+                    this.macro_panel.update(cx, |panel, cx| {
+                        panel.set_visible(tab == DetailTab::Macros, cx);
+                    });
                     cx.notify();
                 }))
         }))
@@ -241,7 +255,7 @@ fn detail_tab_icon(tab: DetailTab) -> &'static str {
     match tab {
         DetailTab::Buttons => "action-icons/mouse-pointer-click.svg",
         DetailTab::ActionsRing => "action-icons/layout-grid.svg",
-        DetailTab::Keys => "action-icons/keyboard.svg",
+        DetailTab::Keys | DetailTab::Macros => "action-icons/keyboard.svg",
         DetailTab::Pointer => "action-icons/gauge.svg",
         DetailTab::Lighting | DetailTab::Light => "action-icons/palette.svg",
         DetailTab::Camera => "action-icons/camera.svg",

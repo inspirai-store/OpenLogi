@@ -53,6 +53,9 @@ use crate::binding::{Binding, ButtonId, GestureDirection};
 /// persisted shape or enum vocabulary changes; readers inspect this value
 /// before consuming the rest of the file.
 ///
+/// v8 adds the host macro library and G604 side-button identifiers. Older
+/// files retain their bindings and default to an empty library.
+///
 /// v7 aligns the thumb-wheel scroll defaults with its normalised physical
 /// direction. Pre-v7 explicit default pairs are migrated in device and
 /// per-application profiles so they remain native rather than becoming a
@@ -95,7 +98,7 @@ use crate::binding::{Binding, ButtonId, GestureDirection};
 /// next save; [`Config::load_from_path`] accepts supported versions `1` through
 /// [`SCHEMA_VERSION`] so an invalid or forward file fails loudly instead of
 /// silently losing bindings.
-pub const SCHEMA_VERSION: u32 = 7;
+pub const SCHEMA_VERSION: u32 = 8;
 
 /// Top-level config document.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +140,12 @@ pub struct Config {
     /// `[keyboard]` section loading unchanged.
     #[serde(default)]
     pub keyboard: KeyboardConfig,
+    /// Host macro library; absent in schema v7 and earlier.
+    #[serde(
+        default,
+        skip_serializing_if = "crate::macros::MacroConfig::is_default"
+    )]
+    pub macros: crate::macros::MacroConfig,
 }
 
 impl Default for Config {
@@ -148,6 +157,7 @@ impl Default for Config {
             devices: BTreeMap::new(),
             ephemeral: false,
             keyboard: KeyboardConfig::default(),
+            macros: crate::macros::MacroConfig::default(),
         }
     }
 }

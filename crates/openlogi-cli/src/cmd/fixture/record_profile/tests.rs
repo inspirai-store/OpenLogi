@@ -106,6 +106,23 @@ impl TestAgent {
     reason = "the in-process IPC service intentionally returns immediate scripted values"
 )]
 impl Agent for TestAgent {
+    async fn macro_status(self, _: tarpc::context::Context) -> openlogi_core::macros::MacroStatus {
+        openlogi_core::macros::MacroStatus::default()
+    }
+    async fn macro_command(
+        self,
+        _: tarpc::context::Context,
+        _: openlogi_core::macros::MacroCommand,
+    ) -> Result<openlogi_core::macros::MacroReply, String> {
+        Err("Unavailable in fixture test".into())
+    }
+    async fn g604_command(
+        self,
+        _: tarpc::context::Context,
+        _: openlogi_core::macros::g604::G604Command,
+    ) -> Result<openlogi_core::macros::g604::G604Status, String> {
+        Err("Unavailable in fixture test".into())
+    }
     async fn protocol_version(self, _: TarpcContext) -> u32 {
         PROTOCOL_VERSION
     }

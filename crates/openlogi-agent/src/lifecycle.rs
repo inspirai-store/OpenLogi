@@ -404,6 +404,7 @@ impl Running {
                 standalone,
                 hid_open_failures,
             } => {
+                self.inputs.g604.inventory_changed(&inventories);
                 let mut orchestrator = self.orchestrator.lock().await;
                 orchestrator.refresh_inventory(&inventories, &standalone, hid_open_failures);
                 let confirm_settings = orchestrator.needs_reapply_confirmation();
@@ -413,6 +414,7 @@ impl Running {
                 }
             }
             InventoryEvent::Unavailable => {
+                self.inputs.g604.inventory_changed(&[]);
                 self.orchestrator.lock().await.mark_inventory_unavailable();
             }
             // Devices likely power-cycled during the sleep; the next snapshot

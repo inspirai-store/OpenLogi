@@ -1,0 +1,17 @@
+# Owner: write::error::classify_hidpp_error, including raw-channel errors via Into.
+id: device-hidpp-timeout-classification-owner
+language: rust
+severity: error
+message: HID++ timeout classification belongs to write::error::classify_hidpp_error. Preserve its typed verdict so queries can retry without replaying writes.
+files:
+  - crates/openlogi-device/src/write/**/*.rs
+ignores:
+  - crates/openlogi-device/src/write/error.rs
+rule:
+  any:
+    - pattern:
+        context: 'match error { ChannelError::Timeout => WriteError::RequestTimedOut { $$$FIELDS } }'
+        selector: match_arm
+    - pattern:
+        context: 'match error { Hidpp20Error::Channel(ChannelError::Timeout) => WriteError::RequestTimedOut { $$$FIELDS } }'
+        selector: match_arm

@@ -24,6 +24,7 @@ mod haptic;
 mod hires_wheel;
 mod lighting;
 mod litra;
+pub mod onboard;
 mod smartshift;
 
 pub use backlight::{get_backlight, get_backlight_on, set_backlight_enabled};

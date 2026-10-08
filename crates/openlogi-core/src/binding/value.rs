@@ -79,6 +79,22 @@ pub enum Binding {
 }
 
 impl Binding {
+    /// Replace actions referencing a removed macro, preserving unrelated arms.
+    pub fn remove_macro_reference(&mut self, id: &str) {
+        let clear = |action: &mut Action| {
+            if matches!(action, Action::RunMacro(value) if value == id) {
+                *action = Action::None;
+            }
+        };
+        match self {
+            Self::Single(action) => clear(action),
+            Self::Gesture(directions) => directions.values_mut().for_each(clear),
+            Self::LongPress(actions) => {
+                clear(&mut actions.short);
+                clear(&mut actions.long);
+            }
+        }
+    }
     /// The plain-click action for this binding: the [`Single`](Binding::Single)
     /// action, the [`Gesture`](Binding::Gesture) map's
     /// [`Click`](GestureDirection::Click) entry, or a

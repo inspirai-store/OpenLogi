@@ -184,6 +184,53 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Current shared macro library, read by the native editor.
+    pub(crate) fn macro_config(&self) -> &openlogi_core::macros::MacroConfig {
+        &self.config.macros
+    }
+    /// Send a transient macro command using the existing connection owner.
+    pub(crate) fn macro_request(&self, command: impl Into<crate::services::ipc::Command>) -> bool {
+        self.send_ipc(command)
+    }
+    /// Persist a validated macro through the existing revision-aware config writer.
+    pub(crate) fn commit_macro(
+        &mut self,
+        id: String,
+        definition: openlogi_core::macros::MacroDefinition,
+    ) -> Result<(), String> {
+        definition.validate().map_err(|e| e.to_string())?;
+        self.config.edit(|config| {
+            config.macros.library.insert(id, definition);
+        });
+        if self.persist_and_reload("macro") {
+            Ok(())
+        } else {
+            Err(self.config_issue().unwrap_or("Save failed").into())
+        }
+    }
+    /// Delete a macro and its bindings while retaining all other configuration.
+    pub(crate) fn delete_macro(&mut self, id: &str) -> Result<(), String> {
+        self.config.edit(|config| config.delete_macro(id));
+        self.restore_binding_projections();
+        if self.persist_and_reload("macro deletion") {
+            Ok(())
+        } else {
+            Err(self.config_issue().unwrap_or("Save failed").into())
+        }
+    }
+    /// Change the globally reserved emergency chord.
+    pub(crate) fn commit_macro_emergency(
+        &mut self,
+        chord: openlogi_core::config::KeyTrigger,
+    ) -> Result<(), String> {
+        self.config
+            .edit(|config| config.macros.emergency_stop = chord);
+        if self.persist_and_reload("macro emergency shortcut") {
+            Ok(())
+        } else {
+            Err(self.config_issue().unwrap_or("Save failed").into())
+        }
+    }
     /// Return the shared state entity when runtime initialization has installed it.
     pub(crate) fn try_global(cx: &App) -> Option<Entity<Self>> {
         cx.try_global::<GlobalAppState>()

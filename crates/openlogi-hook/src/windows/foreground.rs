@@ -29,6 +29,12 @@ const WM_FOREGROUND_CHANGED: u32 = WM_APP + 1;
 
 type ActivationCallback = Box<dyn Fn(Option<ForegroundApp>) + Send + Sync + 'static>;
 
+pub(crate) fn window_token() -> Option<usize> {
+    // SAFETY: GetForegroundWindow has no parameters and returns a borrowed identity.
+    let window = unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() };
+    (!window.is_null()).then_some(window as usize)
+}
+
 /// Typed setup and worker failures for the Windows foreground observer.
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub(crate) enum ForegroundApplicationObserverError {

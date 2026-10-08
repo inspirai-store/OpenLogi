@@ -136,6 +136,10 @@ pub enum HidppOperation {
     /// Read keyboard Fn-lock (fn inversion). Appended last — variant order is
     /// wire format.
     ReadFnLock,
+    /// Read gaming onboard profile memory.
+    ReadOnboardProfiles,
+    /// Write or restore a backed-up gaming onboard profile.
+    WriteOnboardProfiles,
 }
 
 /// HID++ feature error kind in a serializable wire-safe form.

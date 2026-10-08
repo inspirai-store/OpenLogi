@@ -43,6 +43,7 @@ fn test_dispatcher() -> (
     let (action_ring, _ring_events) = tokio::sync::mpsc::unbounded_channel();
     let dispatcher = ActionDispatcher {
         executor: super::super::ActionExecutor {
+            macros: crate::macros::MacroRuntime::new().unwrap().handle(),
             dpi_cycle: Arc::new(RwLock::new(crate::DpiCycles::default())),
             access: crate::hardware::DeviceAccess {
                 channel: Arc::new(RwLock::new(None)),

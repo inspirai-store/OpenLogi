@@ -1,3 +1,5 @@
+> **inspirai-store fork:** This branch adds an experimental Windows G604 Bluetooth macro library, recorder, editor, and side-button triggers. See the [setup, build instructions, and validation limits](docs/G604-BLUETOOTH-MACROS.md). Upstream OpenLogi information follows below.
+
 > [!WARNING]
 > **OpenLogi is under active development** and not yet stable — features and config may still change. Give the repo a **Star** ⭐ and **Watch** 👀 it to get notified when a new release lands.
 

@@ -38,6 +38,7 @@ use macos as platform;
 use windows as platform;
 
 /// Which isolated edge of a held keyboard chord to synthesize.
+#[cfg(not(target_os = "windows"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum KeyPhase {
     Down,
@@ -384,8 +385,7 @@ fn hold_transition(released: Option<&KeyCombo>, pressed: Option<&KeyCombo>) {
         target_os = "windows" => {
             let mut output = HELD_OUTPUT.lock().unwrap_or_else(PoisonError::into_inner);
             let transition = output.transition(released, pressed);
-            windows::hold_keys(&transition.up, KeyPhase::Up);
-            windows::hold_keys(&transition.down, KeyPhase::Down);
+            windows::shared_hold_transition(&transition.up, &transition.down);
         }
         _ => {
             tracing::warn!(
@@ -554,7 +554,7 @@ pub const SYNTHETIC_EVENT_USER_DATA: i64 = 0x4F4C_4749;
     expect(clippy::allow_attributes, reason = "see above"),
     allow(dead_code, reason = "called only by the Windows backend")
 )]
-fn hid_usage_to_windows(usage: u8) -> Option<u16> {
+pub(crate) fn hid_usage_to_windows(usage: u8) -> Option<u16> {
     match usage {
         0x04..=0x1d => Some(u16::from(b'A' + usage - 0x04)),
         0x1e..=0x26 => Some(u16::from(b'1' + usage - 0x1e)),

@@ -387,11 +387,12 @@ unsafe extern "system" fn mouse_proc(code: i32, wparam: WPARAM, lparam: LPARAM) 
         return call_next(code, wparam, lparam);
     };
 
-    let callback = CALLBACK.lock().ok().and_then(|slot| slot.clone());
+    let callback = CALLBACK.try_lock().ok().and_then(|slot| slot.clone());
     let disposition = callback
         .as_ref()
         .map_or(EventDisposition::PassThrough, |cb| {
-            cb(HookEvent::Mouse(event))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| cb(HookEvent::Mouse(event))))
+                .unwrap_or(EventDisposition::PassThrough)
         });
     match disposition {
         EventDisposition::PassThrough => call_next(code, wparam, lparam),
@@ -524,15 +525,38 @@ unsafe extern "system" fn keyboard_proc(code: i32, wparam: WPARAM, lparam: LPARA
     let Some(data) = (unsafe { key_hook_data(lparam) }) else {
         return call_next(code, wparam, lparam);
     };
-    let Some(event) = translate_key(wparam, data, current_modifiers()) else {
+    if data.flags & LLKHF_INJECTED != 0 {
         return call_next(code, wparam, lparam);
+    }
+    let pressed = match u32::try_from(wparam).unwrap_or(0) {
+        WM_KEYDOWN | WM_SYSKEYDOWN => true,
+        WM_KEYUP | WM_SYSKEYUP => false,
+        _ => return call_next(code, wparam, lparam),
     };
+    let key = translate_key(wparam, data, current_modifiers());
 
-    let callback = CALLBACK.lock().ok().and_then(|slot| slot.clone());
+    let callback = CALLBACK.try_lock().ok().and_then(|slot| slot.clone());
     let disposition = callback
         .as_ref()
         .map_or(EventDisposition::PassThrough, |cb| {
-            cb(HookEvent::Key(event))
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let input = openlogi_core::macros::MacroInput::Key {
+                    scan_code: u16::try_from(data.scanCode).unwrap_or(0),
+                    extended: data.flags & 1 != 0,
+                };
+                if cb(HookEvent::PhysicalKey {
+                    input,
+                    pressed,
+                    key,
+                }) == EventDisposition::Suppress
+                {
+                    return EventDisposition::Suppress;
+                }
+                key.map_or(EventDisposition::PassThrough, |event| {
+                    cb(HookEvent::Key(event))
+                })
+            }))
+            .unwrap_or(EventDisposition::PassThrough)
         });
     match disposition {
         EventDisposition::PassThrough => call_next(code, wparam, lparam),

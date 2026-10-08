@@ -26,6 +26,11 @@ fn main() {
     println!("cargo:rerun-if-env-changed=OPENLOGI_THEMES_DIR");
 
     embed_windows_resources();
+    // Windows defaults to a 1 MiB main stack. GPUI's retained editor trees
+    // exceed that in unoptimized builds; reserve the same 8 MiB as macOS.
+    if env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc") {
+        println!("cargo:rustc-link-arg-bin=openlogi-desktop=/STACK:8388608");
+    }
 
     let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     let src_dir = locate_themes_dir();

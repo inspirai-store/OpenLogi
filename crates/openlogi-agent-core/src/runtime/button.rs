@@ -170,6 +170,16 @@ impl PressToken {
     }
 }
 
+impl PressToken {
+    pub(crate) fn macro_binding(&self) -> String {
+        format!(
+            "{}:{:?}",
+            self.key.source.device_key().unwrap_or("hook"),
+            self.key.control
+        )
+    }
+}
+
 /// State retained from `Down` until the exactly-once terminal event.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ActivePress {

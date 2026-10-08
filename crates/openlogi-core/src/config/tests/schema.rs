@@ -3,6 +3,90 @@
 use super::*;
 
 #[test]
+fn deleting_macro_preserves_unrelated_long_press_action() {
+    let mut config = Config::default();
+    config
+        .macros
+        .library
+        .insert("test".into(), crate::macros::MacroDefinition::example());
+    let device = config.devices.entry("unit:test".into()).or_default();
+    device.bindings.insert(
+        ButtonId::G4,
+        Binding::LongPress(crate::binding::LongPressBinding::new(
+            Action::Copy,
+            Action::RunMacro("test".into()),
+        )),
+    );
+    config.delete_macro("test");
+    assert!(config.macros.library.is_empty());
+    assert_eq!(
+        config.stored_bindings("unit:test")[&ButtonId::G4],
+        Binding::LongPress(crate::binding::LongPressBinding::new(
+            Action::Copy,
+            Action::None
+        ))
+    );
+}
+
+#[test]
+fn v7_migrates_to_empty_macro_library_without_changing_bindings() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("config.toml");
+    fs::write(
+        &path,
+        r#"schema_version = 7
+[devices."unit:test".bindings]
+Back = "Copy"
+DpiToggle = { short = "ShowDesktop", long = "MissionControl" }
+[keyboard.bindings]
+"f1" = "Paste"
+"#,
+    )
+    .unwrap();
+    let migrated = Config::load_from_path(&path).unwrap();
+    assert_eq!(migrated.schema_version, 8);
+    assert!(migrated.macros.library.is_empty());
+    assert_eq!(
+        migrated.stored_bindings("unit:test").get(&ButtonId::Back),
+        Some(&Binding::Single(Action::Copy))
+    );
+    assert_eq!(
+        migrated.keyboard.bindings.get(&"f1".parse().unwrap()),
+        Some(&Action::Paste)
+    );
+    assert_eq!(
+        migrated.macros.emergency_stop.to_string(),
+        "control+option+f12"
+    );
+}
+
+#[test]
+fn macro_library_and_side_binding_survive_save_reload() {
+    let mut config = Config::default();
+    let mut definition = crate::macros::MacroDefinition::example();
+    definition.mode = crate::macros::MacroMode::Repeat(3);
+    config
+        .macros
+        .library
+        .insert("example".into(), definition.clone());
+    config
+        .devices
+        .entry("unit:test".into())
+        .or_default()
+        .bindings
+        .insert(
+            ButtonId::G4,
+            Binding::Single(Action::RunMacro("example".into())),
+        );
+    let loaded = write_and_read(&config);
+    assert_eq!(loaded.macros.library["example"], definition);
+    assert_eq!(
+        loaded.stored_bindings("unit:test")[&ButtonId::G4],
+        Binding::Single(Action::RunMacro("example".into()))
+    );
+}
+
+#[test]
 fn rejects_newer_schema_version_but_accepts_v1() {
     // A future version is rejected loudly; the current and older versions
     // load (older ones migrate through the shim).

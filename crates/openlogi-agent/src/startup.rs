@@ -47,6 +47,7 @@ pub(crate) struct Core {
 /// ahead of the watchers and prompts lets a dormant agent hear demand, and
 /// keeps a first-run consent dialog from blackholing the GUI's connect.
 pub(crate) async fn bootstrap(config: Config) -> Option<Core> {
+    let macro_config = config.clone();
     // The orchestrator is shared with the IPC server and mutated by the
     // select loop, so it lives behind an async mutex; locks are brief. The
     // hook facts are published by the select loop, which owns the hook.
@@ -58,7 +59,8 @@ pub(crate) async fn bootstrap(config: Config) -> Option<Core> {
         Arc::clone(&observable),
     )));
     let shared = orchestrator.lock().await.shared();
-    let inputs = InputServices::start(&shared)?;
+    let inputs = InputServices::start(&shared, Arc::clone(&observable))?;
+    inputs.dispatcher.macros().configure(macro_config);
 
     // Shared between the hook callback (which mirrors events into it) and
     // the IPC server (which the GUI polls); the janitor turns it back off.
@@ -108,7 +110,7 @@ fn spawn_ipc_server(
         pairing,
         event_monitor,
         Arc::clone(&inputs.ring),
-        inputs.dispatcher.clone(),
+        (inputs.dispatcher.clone(), Arc::clone(&inputs.g604)),
     );
     let ring_haptics = server.ring_haptics.clone();
     tokio::spawn(server::run(server));
@@ -118,6 +120,7 @@ fn spawn_ipc_server(
 /// The input-action runtimes — pure in-process workers that touch no device
 /// until an action is dispatched, so [`bootstrap`] may start them.
 pub(crate) struct InputServices {
+    pub(crate) g604: Arc<openlogi_agent_core::g604::G604Service>,
     pub(crate) ring: Arc<ActionRingManager>,
     pub(crate) triggers: tokio::sync::mpsc::UnboundedReceiver<Option<String>>,
     pub(crate) dispatcher: ActionDispatcher,
@@ -127,7 +130,7 @@ pub(crate) struct InputServices {
 }
 
 impl InputServices {
-    fn start(shared: &SharedHandles) -> Option<Self> {
+    fn start(shared: &SharedHandles, observable: Arc<ObservableState>) -> Option<Self> {
         let ring = Arc::new(ActionRingManager::default());
         let (sender, triggers) = tokio::sync::mpsc::unbounded_channel();
         let action_runtime =
@@ -146,8 +149,14 @@ impl InputServices {
             }
         };
         let dispatcher = action_runtime.dispatcher();
+        let g604 = Arc::new(openlogi_agent_core::g604::G604Service::new(
+            shared.device_access(),
+            observable,
+            dispatcher.macros(),
+        ));
         let scroll_input = scroll_runtime.input();
         Some(Self {
+            g604,
             ring,
             triggers,
             dispatcher,
@@ -158,8 +167,21 @@ impl InputServices {
     }
 
     pub(crate) fn shutdown(&mut self) {
-        self.scroll_runtime.shutdown();
         self.action_runtime.shutdown();
+        if self.g604.status().recovery_pending {
+            let service = Arc::clone(&self.g604);
+            let _ = std::thread::spawn(move || {
+                if let Ok(runtime) = openlogi_core::worker::runtime()
+                    && let Err(error) = runtime.block_on(
+                        service.command(openlogi_core::macros::g604::G604Command::Restore),
+                    )
+                {
+                    warn!(%error,"G604 restoration pending; durable journal retained");
+                }
+            })
+            .join();
+        }
+        self.scroll_runtime.shutdown();
     }
 }
 

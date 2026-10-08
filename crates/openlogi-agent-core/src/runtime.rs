@@ -79,6 +79,7 @@ impl HeldShortcuts {
 
 #[derive(Clone)]
 struct ActionExecutor {
+    macros: crate::macros::MacroHandle,
     dpi_cycle: Arc<RwLock<DpiCycles>>,
     access: DeviceAccess,
     action_ring: tokio::sync::mpsc::UnboundedSender<Option<String>>,
@@ -90,6 +91,13 @@ impl ActionExecutor {
     }
 
     fn dispatch_to(&self, action: &Action, device_key: Option<&str>, target: ActionDispatchTarget) {
+        if let Action::RunMacro(id) = action {
+            self.macros.pulse(
+                format!("action:{}:{id}", device_key.unwrap_or("global")),
+                id.clone(),
+            );
+            return;
+        }
         let Some(target) = target.resolve(action) else {
             debug!(action = %action.label(), "mouse action target unavailable or no longer matches — skipped");
             return;
@@ -204,6 +212,11 @@ impl ButtonEventHandler {
                 self.start_action(press.token(), &action, press.device_key(), press.target());
             }
             ButtonRuntimeEvent::Ended { press, reason } => {
+                if matches!(reason, EndReason::Released) {
+                    self.executor.macros.release(press.token().macro_binding());
+                } else {
+                    self.executor.macros.cancel(press.token().macro_binding());
+                }
                 self.held.end(press.token());
                 if let EndReason::Canceled(reason) = reason {
                     match press.control() {
@@ -226,6 +239,12 @@ impl ButtonEventHandler {
         device_key: Option<&str>,
         target: ActionDispatchTarget,
     ) {
+        if let Action::RunMacro(id) = action {
+            self.executor
+                .macros
+                .press(press.macro_binding(), id.clone());
+            return;
+        }
         if action.held_combo().is_some() && target.resolve(action).is_none() {
             return;
         }
@@ -248,6 +267,7 @@ pub struct ActionDispatcher {
 /// Keep this value in the agent's main runtime so graceful shutdown can stop
 /// and join the worker after capture sources have stopped producing input.
 pub struct ActionRuntime {
+    macros: crate::macros::MacroRuntime,
     dispatcher: ActionDispatcher,
     buttons: ButtonRuntimeOwner,
 }
@@ -259,7 +279,9 @@ impl ActionRuntime {
         access: DeviceAccess,
         action_ring: tokio::sync::mpsc::UnboundedSender<Option<String>>,
     ) -> io::Result<Self> {
+        let macros = crate::macros::MacroRuntime::new()?;
         let executor = ActionExecutor {
+            macros: macros.handle(),
             dpi_cycle,
             access,
             action_ring,
@@ -268,6 +290,7 @@ impl ActionRuntime {
         let buttons = ButtonRuntimeOwner::spawn(move |event| button_handler.handle(event))?;
         let input = buttons.input();
         Ok(Self {
+            macros,
             dispatcher: ActionDispatcher {
                 executor,
                 buttons: input,
@@ -285,10 +308,16 @@ impl ActionRuntime {
     /// Reject new button input, emit terminal cancellation, and join the worker.
     pub fn shutdown(&mut self) {
         let _ = self.buttons.shutdown();
+        self.macros.shutdown();
     }
 }
 
 impl ActionDispatcher {
+    /// Macro command handle shared by input capture and IPC.
+    #[must_use]
+    pub fn macros(&self) -> crate::macros::MacroHandle {
+        self.executor.macros.clone()
+    }
     /// Route one action without blocking the input callback.
     pub fn dispatch(&self, action: &Action, device_key: Option<&str>) {
         self.executor.dispatch(action, device_key);
@@ -406,6 +435,7 @@ impl ActionDispatcher {
     /// capture-owner transition. Events already queued under the old
     /// generation are ignored even if they arrive after this call's wake-up.
     pub fn cancel_all_buttons(&self) {
+        self.executor.macros.stop_all();
         self.buttons.invalidate_all();
     }
 
@@ -419,6 +449,7 @@ impl ActionDispatcher {
     /// Cancel only presses owned by an OS-hook callback. HID++ capture does not
     /// depend on Accessibility and remains active when the native hook stops.
     pub fn cancel_hook_buttons(&self) {
+        self.executor.macros.stop_all();
         self.buttons.cancel_hooks();
     }
 }

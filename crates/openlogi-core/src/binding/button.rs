@@ -75,6 +75,18 @@ pub enum ButtonId {
     /// the keys; among keys the order is by control ID, so a GUI that wants
     /// physical F-row order sorts by catalog position instead.
     Control(Cid),
+    /// Calibrated G604 side button G4 (host macro trigger).
+    G4,
+    /// Calibrated G604 side button G5 (host macro trigger).
+    G5,
+    /// Calibrated G604 side button G6 (host macro trigger).
+    G6,
+    /// Calibrated G604 side button G7 (host macro trigger).
+    G7,
+    /// Calibrated G604 side button G8 (host macro trigger).
+    G8,
+    /// Calibrated G604 side button G9 (host macro trigger).
+    G9,
 }
 
 impl ButtonId {
@@ -164,7 +176,7 @@ impl ButtonId {
     /// string form read this one table; `unit_name` is a match without a
     /// wildcard over the unit variants, so a new variant that is missing here
     /// fails to compile rather than failing to parse.
-    const UNIT_NAMES: [(ButtonId, &'static str); 13] = [
+    const UNIT_NAMES: [(ButtonId, &'static str); 19] = [
         (ButtonId::LeftClick, "LeftClick"),
         (ButtonId::RightClick, "RightClick"),
         (ButtonId::MiddleClick, "MiddleClick"),
@@ -178,6 +190,12 @@ impl ButtonId {
         (ButtonId::HapticPanel, "HapticPanel"),
         (ButtonId::WheelTiltLeft, "WheelTiltLeft"),
         (ButtonId::WheelTiltRight, "WheelTiltRight"),
+        (ButtonId::G4, "G4"),
+        (ButtonId::G5, "G5"),
+        (ButtonId::G6, "G6"),
+        (ButtonId::G7, "G7"),
+        (ButtonId::G8, "G8"),
+        (ButtonId::G9, "G9"),
     ];
 
     /// The name a mouse button is persisted under. Keyboard controls have no
@@ -198,6 +216,12 @@ impl ButtonId {
             ButtonId::WheelTiltLeft => Self::UNIT_NAMES[11].1,
             ButtonId::WheelTiltRight => Self::UNIT_NAMES[12].1,
             ButtonId::Control(_) => return None,
+            ButtonId::G4 => Self::UNIT_NAMES[13].1,
+            ButtonId::G5 => Self::UNIT_NAMES[14].1,
+            ButtonId::G6 => Self::UNIT_NAMES[15].1,
+            ButtonId::G7 => Self::UNIT_NAMES[16].1,
+            ButtonId::G8 => Self::UNIT_NAMES[17].1,
+            ButtonId::G9 => Self::UNIT_NAMES[18].1,
         })
     }
 
@@ -228,6 +252,12 @@ impl ButtonId {
             ButtonId::GestureButton => "Gesture Button",
             ButtonId::HapticPanel => "Haptic Panel",
             ButtonId::Control(cid) => return cid.label(),
+            ButtonId::G4 => "G4",
+            ButtonId::G5 => "G5",
+            ButtonId::G6 => "G6",
+            ButtonId::G7 => "G7",
+            ButtonId::G8 => "G8",
+            ButtonId::G9 => "G9",
         })
     }
 
@@ -249,6 +279,12 @@ impl ButtonId {
             ButtonId::GestureButton => "actions.gesture_button",
             ButtonId::HapticPanel => "actions.haptic_panel",
             ButtonId::Control(cid) => cid.translation_key(),
+            ButtonId::G4
+            | ButtonId::G5
+            | ButtonId::G6
+            | ButtonId::G7
+            | ButtonId::G8
+            | ButtonId::G9 => "macros.side_button",
         }
     }
 }

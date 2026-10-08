@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use hidpp::channel::{ChannelError, HidppChannel};
+use hidpp::channel::HidppChannel;
 use hidpp::device::Device;
 use hidpp::feature::rgb_effects::{
     CLUSTER_EFFECT_PARAM_COUNT, PowerModeTarget, RgbEffectsFeature, RgbPersistence, SwControlFlags,
@@ -141,10 +141,5 @@ async fn discover(
 }
 
 fn classify(error: Hidpp20Error) -> WriteError {
-    match error {
-        Hidpp20Error::Channel(ChannelError::Timeout) => WriteError::RequestTimedOut {
-            operation: HidppOperation::Lighting,
-        },
-        other => classify_hidpp_error(other, HidppOperation::Lighting, FEATURE),
-    }
+    classify_hidpp_error(error, HidppOperation::Lighting, FEATURE)
 }

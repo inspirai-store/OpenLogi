@@ -215,7 +215,7 @@ impl Action {
     #[must_use]
     pub fn effect(&self) -> Effect<'_> {
         match self {
-            Action::None => Effect::None,
+            Action::None | Action::RunMacro(_) => Effect::None,
 
             Action::LeftClick => Effect::Click(MouseButton::Left),
             Action::RightClick => Effect::Click(MouseButton::Right),

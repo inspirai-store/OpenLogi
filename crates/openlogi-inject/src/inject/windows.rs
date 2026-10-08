@@ -16,7 +16,7 @@ use openlogi_core::binding::{
 };
 use openlogi_core::scroll::ScrollDelta;
 
-use super::{HeldKey, KeyPhase, ScrollQuantizer};
+use super::{HeldKey, ScrollQuantizer};
 
 const WHEEL_DELTA: i32 = 120;
 const WHEEL_DELTA_F64: f64 = 120.0;
@@ -265,17 +265,13 @@ fn combo_modifiers(combo: &KeyCombo) -> Vec<u16> {
 }
 
 /// Emit one edge for the physical keys whose ownership changed.
-pub(super) fn hold_keys(keys: &[HeldKey], phase: KeyPhase) {
-    let keys: Vec<_> = keys
-        .iter()
-        .filter_map(|key| held_virtual_key(*key))
-        .collect();
-    let key_up = phase == KeyPhase::Up;
-    let mut inputs: Vec<_> = keys.iter().map(|key| key_input(*key, key_up)).collect();
-    if key_up {
-        inputs.reverse();
-    }
-    send_inputs(&inputs);
+pub(super) fn shared_hold_transition(up: &[HeldKey], down: &[HeldKey]) {
+    let inputs = |keys: &[HeldKey]| {
+        keys.iter()
+            .filter_map(|key| held_virtual_key(*key).and_then(crate::macro_output::scan_for_vk))
+            .collect::<Vec<_>>()
+    };
+    crate::macro_output::legacy_transition(&inputs(up), &inputs(down));
 }
 
 fn held_virtual_key(key: HeldKey) -> Option<u16> {

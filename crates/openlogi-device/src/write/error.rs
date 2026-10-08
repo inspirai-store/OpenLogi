@@ -38,7 +38,42 @@ pub(crate) fn classify_hidpp_error(
             operation,
             feature_hex,
         },
+        Hidpp20Error::Channel(hidpp::channel::ChannelError::Timeout) => {
+            WriteError::RequestTimedOut { operation }
+        }
         Hidpp20Error::Channel(error) => WriteError::Hidpp(format!("{error:?}")),
         _ => WriteError::Hidpp(format!("{error:?}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hidpp::channel::ChannelError;
+
+    #[test]
+    fn channel_timeout_preserves_the_operation_for_read_retry() {
+        assert_eq!(
+            classify_hidpp_error(
+                Hidpp20Error::Channel(ChannelError::Timeout),
+                HidppOperation::WriteOnboardProfiles,
+                0x8100,
+            ),
+            WriteError::RequestTimedOut {
+                operation: HidppOperation::WriteOnboardProfiles,
+            }
+        );
+        assert_eq!(
+            classify_hidpp_error(
+                Hidpp20Error::Feature(ErrorType::Unsupported),
+                HidppOperation::WriteOnboardProfiles,
+                0x8100,
+            ),
+            WriteError::HidppFeature {
+                operation: HidppOperation::WriteOnboardProfiles,
+                feature_hex: 0x8100,
+                kind: HidppFeatureErrorKind::Unsupported,
+            }
+        );
     }
 }

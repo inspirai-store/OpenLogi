@@ -74,7 +74,13 @@ pub fn default_binding(button: ButtonId) -> Action {
         // Keyboard keys stay on their native firmware function until the user
         // explicitly binds them; an unbound key is never diverted, so a
         // `None` default keeps the projection total without capturing anything.
-        ButtonId::Control(_) => Action::None,
+        ButtonId::Control(_)
+        | ButtonId::G4
+        | ButtonId::G5
+        | ButtonId::G6
+        | ButtonId::G7
+        | ButtonId::G8
+        | ButtonId::G9 => Action::None,
     }
 }
 

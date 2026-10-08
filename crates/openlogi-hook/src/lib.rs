@@ -135,7 +135,20 @@ pub enum HookEvent {
     Mouse(MouseEvent),
     /// Keyboard event (function-key remapper path).
     Key(KeyEvent),
+    /// All physical keyboard scan-code edges, excluding injected events.
+    PhysicalKey {
+        /// Hardware scan-code identity for recording/playback.
+        input: openlogi_core::macros::MacroInput,
+        /// Down or up edge.
+        pressed: bool,
+        /// Function-row identity, when this is also a remappable key.
+        key: Option<KeyEvent>,
+    },
 }
+
+/// Device-attributed Windows Raw Input used by the G604 calibration wizard.
+#[cfg(target_os = "windows")]
+pub mod raw_input;
 
 /// An event captured at the OS layer.
 #[derive(Clone, Debug)]
@@ -530,6 +543,20 @@ impl Hook {
 #[must_use]
 pub fn frontmost_application() -> Option<ForegroundApp> {
     Backend::frontmost_app()
+}
+
+/// Window identity for immediate same-application focus cancellation on Windows.
+/// Other hosts use application activation; native macro playback is Windows-only.
+#[must_use]
+pub fn foreground_window_token() -> Option<usize> {
+    #[cfg(target_os = "windows")]
+    {
+        windows::foreground::window_token()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
 }
 
 /// Return the Safari process captured by the latest macOS foreground-app

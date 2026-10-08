@@ -529,12 +529,11 @@ pub(super) fn per_key_reports(
 }
 
 fn classify_raw_lighting_error(error: ChannelError) -> WriteError {
-    match error {
-        ChannelError::Timeout => WriteError::RequestTimedOut {
-            operation: HidppOperation::Lighting,
-        },
-        other => WriteError::Hidpp(format!("{other:?}")),
-    }
+    classify_hidpp_error(
+        error.into(),
+        HidppOperation::Lighting,
+        ColorLedEffectsFeature::ID,
+    )
 }
 
 /// Set a solid keyboard colour on an already-open [`SharedChannel`], using

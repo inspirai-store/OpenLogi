@@ -522,6 +522,9 @@ macro_rules! commands {
 }
 
 commands! {
+    MacroControl,
+    MacroState,
+    G604Control,
     SetDpi,
     SetLighting,
     SetLight,
@@ -539,6 +542,79 @@ commands! {
     UnpairDevice,
     #[cfg(all(target_os = "macos", debug_assertions))]
     PollEventMonitor,
+}
+
+/// Macro recorder/playback/import request over the existing agent connection.
+pub struct MacroControl {
+    pub command: openlogi_core::macros::MacroCommand,
+    pub reply: oneshot::Sender<Result<openlogi_core::macros::MacroReply, String>>,
+}
+impl Request for MacroControl {
+    type Answer = Result<openlogi_core::macros::MacroReply, String>;
+    async fn call(&self, client: &AgentClient) -> Result<Self::Answer, RpcError> {
+        client
+            .macro_command(context::current(), self.command.clone())
+            .await
+    }
+    fn deliver(self, outcome: Result<Self::Answer, Unavailable>, _: &UpdateSender) {
+        let _ = self
+            .reply
+            .send(outcome.unwrap_or_else(|_| Err("Agent unavailable".into())));
+    }
+}
+/// Cached macro and calibration state, polled only while the macro panel is open.
+pub struct MacroState {
+    pub reply: oneshot::Sender<
+        Result<
+            (
+                openlogi_core::macros::MacroStatus,
+                openlogi_core::macros::g604::G604Status,
+            ),
+            String,
+        >,
+    >,
+}
+impl Request for MacroState {
+    type Answer = Result<
+        (
+            openlogi_core::macros::MacroStatus,
+            openlogi_core::macros::g604::G604Status,
+        ),
+        String,
+    >;
+    async fn call(&self, client: &AgentClient) -> Result<Self::Answer, RpcError> {
+        let status = client.macro_status(context::current()).await?;
+        Ok(client
+            .g604_command(
+                context::current(),
+                openlogi_core::macros::g604::G604Command::Status,
+            )
+            .await?
+            .map(|g604| (status, g604)))
+    }
+    fn deliver(self, outcome: Result<Self::Answer, Unavailable>, _: &UpdateSender) {
+        let _ = self
+            .reply
+            .send(outcome.unwrap_or_else(|_| Err("Agent unavailable".into())));
+    }
+}
+/// Serialized G604 hardware wizard request with a transaction-sized deadline.
+pub struct G604Control {
+    pub command: openlogi_core::macros::g604::G604Command,
+    pub reply: oneshot::Sender<Result<openlogi_core::macros::g604::G604Status, String>>,
+}
+impl Request for G604Control {
+    type Answer = Result<openlogi_core::macros::g604::G604Status, String>;
+    async fn call(&self, client: &AgentClient) -> Result<Self::Answer, RpcError> {
+        let mut context = context::current();
+        context.deadline = std::time::Instant::now() + std::time::Duration::from_secs(100);
+        client.g604_command(context, self.command.clone()).await
+    }
+    fn deliver(self, outcome: Result<Self::Answer, Unavailable>, _: &UpdateSender) {
+        let _ = self.reply.send(outcome.unwrap_or_else(|_| {
+            Err("Agent unavailable; check recovery status before retrying".into())
+        }));
+    }
 }
 
 #[cfg(test)]

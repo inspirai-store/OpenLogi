@@ -20,6 +20,10 @@ openlogi-ipc = { path = "../openlogi-ipc" }
 futures-lite = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+serde_json.workspace = true
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+atomic-write-file.workspace = true
+serde = { workspace = true, features = ["derive"] }
 
 [lints]
 workspace = true

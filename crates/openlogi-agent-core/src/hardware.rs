@@ -180,6 +180,22 @@ impl DeviceOp {
         timed(op, f(shared)).await
     }
 
+    /// Bound an onboard-memory transaction while retaining the authoritative channel lease.
+    /// Callers own this in a spawned job, so an IPC disconnect cannot abandon restoration.
+    pub async fn run_onboard<F, Fut, T>(self, f: F) -> Result<T, WriteError>
+    where
+        F: FnOnce(SharedChannel) -> Fut,
+        Fut: Future<Output = Result<T, WriteError>>,
+    {
+        let _lease = self.access.receiver_access.acquire_for_io().await;
+        let shared = self.resolve()?;
+        tokio::time::timeout(Duration::from_secs(45), f(shared))
+            .await
+            .map_err(|_| WriteError::RequestTimedOut {
+                operation: HidppOperation::WriteOnboardProfiles,
+            })?
+    }
+
     /// Own the whole lighting transaction outside the requester runtime. The
     /// worker leases and resolves AFTER obtaining its lighting route lock and
     /// retains that lease through any RGB rollback after requester cancellation.

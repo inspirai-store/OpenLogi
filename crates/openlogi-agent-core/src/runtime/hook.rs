@@ -419,7 +419,7 @@ fn handle_key(
 
     info!(keycode, action = %action.label(), "key → executing bound action");
     let action_target = capture_target();
-    let queued = if action.held_combo().is_some() {
+    let queued = if action.held_combo().is_some() || matches!(action, Action::RunMacro(_)) {
         let queued = dispatcher.try_hook_key_down(keycode, &action, action_target);
         if queued {
             HELD_KEYS.with_borrow_mut(|keys| {
@@ -456,7 +456,13 @@ pub fn start(
     // The per-hold pointer accumulator lives in the thread-local `HOLD`; the
     // callback must never block — see the freeze-hazard note in `macos.rs`.
     let result = Hook::start(move |event| match event {
+        HookEvent::PhysicalKey {
+            input,
+            pressed,
+            key,
+        } => dispatcher.macros().physical_key(input, pressed, key),
         HookEvent::Mouse(event) => {
+            dispatcher.macros().observe_mouse(&event);
             monitor.record(&event);
             match event {
                 MouseEvent::Button {
